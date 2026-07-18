@@ -1,37 +1,20 @@
-require("dotenv").config();
-const express = require("express");
-const http = require("http");
-const cors = require("cors");
-const { Server } = require("socket.io");
-const { migrate } = require("./lib/db");
-const { decode } = require("./lib/auth");
-const { UPLOAD_DIR } = require("./lib/upload");
-
-const app = express();
-app.set("trust proxy", 1); // Railway sits behind a proxy — makes req.protocol correct
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
-
-app.use(cors()); // Netlify-hosted apps call this API cross-origin
-app.use(express.json({ limit: "2mb" }));
-app.use("/uploads", express.static(UPLOAD_DIR)); // local-disk fallback only
-
-/* ---- Socket rooms: teachers see everything, students join their class ---- */
-io.on("connection", (socket) => {
-  const p = decode(socket.handshake.auth?.token || "");
-  if (!p) return socket.disconnect(true);
-  if (p.kind === "teacher") socket.join("teachers");
-  else if (p.kind === "student") socket.join(`class:${p.slug}`);
-});
-
-/* ---- Routes ---- */
-app.get("/health", (_req, res) => res.json({ ok: true }));
-app.use("/api/teachers", require("./routes/teachers"));
-app.use("/api/classes", require("./routes/classes"));
-app.use("/api/store", require("./routes/store")(io));
-app.use("/api", require("./routes/messages")(io)); // /api/messages + /api/classes/:slug/messages
-
-const PORT = process.env.PORT || 3000;
-migrate()
-  .then(() => server.listen(PORT, () => console.log(`🚀 Super Team API on :${PORT}`)))
-  .catch((e) => { console.error("Migration failed:", e); process.exit(1); });
+{
+  "name": "teacher-steve-server",
+  "version": "1.0.0",
+  "description": "Uncle Bac Backend Server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5",
+    "socket.io": "^4.7.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.1.2",
+    "multer": "^1.4.5-lts.1",
+    "cloudinary": "^2.0.2"
+  }
+}
