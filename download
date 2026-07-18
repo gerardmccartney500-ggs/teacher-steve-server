@@ -1,0 +1,77 @@
+# 🏫 Super Team HQ ↔ Student Portal — Setup Guide
+
+Two apps, one live connection: teachers post **Weekly Updates / Homework / Announcements / Worksheets** in Super Team HQ, and families see them **instantly** in the Student Portal — no refresh needed.
+
+```
+┌─────────────────┐    posts     ┌──────────────────┐   live push   ┌─────────────────┐
+│  SuperTeamHQ    │ ───────────► │  Railway server  │ ────────────► │  StudentPortal  │
+│  (Netlify)      │ ◄─────────── │  API + Socket.io │ ◄──────────── │  (Netlify)      │
+└─────────────────┘  live sync   │  + Postgres      │  passcode +   └─────────────────┘
+                                 └──────────────────┘  cached feed
+```
+
+## Step 1 — Deploy the server on Railway (~10 minutes)
+
+1. Put the `server/` folder in a GitHub repo (its own repo, or a subfolder — Railway can point at a subfolder via *Settings → Root Directory*).
+2. In [Railway](https://railway.app): **New Project → Deploy from GitHub repo** → pick the repo.
+3. In the same project: **+ New → Database → PostgreSQL**. Railway automatically gives your server the `DATABASE_URL` variable — nothing to copy.
+   - If it isn't auto-linked: open your service → **Variables** → add a *Reference* to the Postgres `DATABASE_URL`.
+4. Open your server service → **Variables** → add:
+   - `JWT_SECRET` = any long random string (keeps everyone logged in across redeploys)
+5. **Settings → Networking → Generate Domain** → you'll get something like `https://super-team-api-production.up.railway.app`. Copy it — that's your `API_BASE`.
+6. Check `https://YOUR-URL/health` in a browser → should show `{"ok":true}`.
+
+On first boot the server creates all tables and seeds:
+
+| Who | Login | Default code |
+|---|---|---|
+| Steve (admin) | PIN | **5568** |
+| Khai / Sarah / Chi | PIN | **0000** (change inside the app) |
+| Super Star class | passcode | **1111** |
+| Super Bee class | passcode | **2222** |
+| Super Adventurer | passcode | **3333** |
+| Super Buddy | passcode | **4444** |
+| Super Explorer | passcode | **5555** |
+
+You can change teacher PINs inside the app (🔐 button) and class passcodes in **Admin → PINs & Passcodes**.
+
+## Step 2 — (Recommended) Cloudinary for worksheet files
+
+Railway's disk is wiped on every redeploy, so uploaded worksheet PDFs need a real home:
+
+1. Free account at [cloudinary.com](https://cloudinary.com) → Dashboard → copy the **API environment variable** (looks like `cloudinary://123:abc@yourcloud`).
+2. Railway → your service → Variables → add `CLOUDINARY_URL` = that value.
+
+Skip this and everything still works — but uploaded files disappear on the next redeploy. Pasted links (Google Drive etc.) are always safe either way.
+
+## Step 3 — Point the two apps at your server
+
+In **both** `SuperTeamHQ.html` and `StudentPortal.html`, near the top of the file, find:
+
+```js
+const API_BASE = "https://YOUR-APP-NAME.up.railway.app";
+```
+
+Replace with your real Railway URL (no trailing slash). That's the only edit needed.
+
+## Step 4 — Netlify drag-and-drop, as always
+
+- Drop `SuperTeamHQ.html` into one Netlify site (rename to `index.html` or drop a folder containing it as `index.html`).
+- Drop `StudentPortal.html` into your existing student site the same way.
+
+Done. Post a test message as Steve → watch it appear on the portal in under a second.
+
+## What's inside
+
+**Server** (`server/`): Express + Socket.io + Postgres. Auto-migrates on boot. Teacher PINs and class passcodes are stored hashed and checked server-side. Messages: create / edit / delete, each pushed live to the right class room.
+
+**Super Team HQ**: everything your team app did before (tasks, schedules, chats, memos, coach, stars) — now synced through the server so it works on any device, not just inside Claude. "Class Notes" became **📨 Class Messages**: pick a type, pick a class, attach a file or link (worksheets), and post. Edit ✏️ and delete ✕ with a confirm dialog. Admin gets the same panel in the **Class Messages** tab plus class-passcode management under **PINs & Passcodes**.
+
+**Student Portal**: first visit → class picker → 4-digit passcode (kid-friendly pad, trilingual) → saved so they never re-enter it. The old Weekly Updates tile is now **My Class** with 4 tabs (Updates / Homework / News / Worksheets), red **NEW** badges for unseen posts, live socket updates with a gentle chime, and a localStorage cache so spotty wifi still shows the last-loaded feed.
+
+## Troubleshooting
+
+- **"Can't reach the school" on the portal / login fails on HQ** → `API_BASE` typo, or the Railway service is asleep/crashed. Check `/health`.
+- **Everyone logged out after a redeploy** → you didn't set `JWT_SECRET`.
+- **Worksheet file link broken after a redeploy** → that file was uploaded before Cloudinary was configured. Re-upload it.
+- **Changed a class passcode** → that class's families are signed out and asked for the new code (by design).
